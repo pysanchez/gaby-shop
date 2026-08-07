@@ -3,7 +3,8 @@ import pandas as pd
 import psycopg2
 import plotly.express as px
 from datetime import datetime, date
-
+from decimal import Decimal
+#df_historial
 # ==========================================
 # 1. CONFIGURACION E INICIALIZACION BD
 # ==========================================
@@ -322,8 +323,7 @@ def get_connection():
         sslmode="require",
         connect_timeout=10
     )
-
-
+    
 conn = get_connection()
 
 # ==========================================
@@ -534,9 +534,17 @@ with tab_clientes:
     
     st.subheader("Top 5: Mejores Clientes")
     query_top = """
-        SELECT v.cliente as Cliente, COUNT(DISTINCT v.id) as Visitas, SUM(d.cantidad) as Articulos_Comprados, SUM(v.total) as Dinero_Invertido 
-        FROM ventas v JOIN ventas_detalle d ON v.id = d.venta_id GROUP BY v.cliente ORDER BY Dinero_Invertido DESC LIMIT 5
-    """
+    SELECT
+        v.cliente AS "Cliente",
+        COUNT(DISTINCT v.id) AS "Visitas",
+        SUM(d.cantidad) AS "Articulos_Comprados",
+        SUM(v.total) AS "Dinero_Invertido"
+        FROM ventas v
+        JOIN ventas_detalle d ON v.id = d.venta_id
+        GROUP BY v.cliente
+        ORDER BY "Dinero_Invertido" DESC
+        LIMIT 5
+        """
     df_top = pd.read_sql_query(query_top, conn)
     if not df_top.empty:
         df_top['Dinero_Invertido'] = df_top['Dinero_Invertido'].apply(lambda x: f"${x:,.2f}")
@@ -546,10 +554,14 @@ with tab_clientes:
         
     st.markdown("---")
     st.subheader("Historial Completo de Ventas")
-    df_historial = pd.read_sql_query("SELECT fecha as Fecha, cliente as Cliente, total as Total FROM ventas ORDER BY fecha DESC", conn)
-    if not df_historial.empty:
-        df_historial['Total'] = df_historial['Total'].apply(lambda x: f"${x:,.2f}")
-        st.table(df_historial)
+    df_historial = pd.read_sql_query("""
+    SELECT
+        fecha AS "Fecha",
+        cliente AS "Cliente",
+        total AS "Total"
+    FROM ventas
+    ORDER BY fecha DESC
+    """, conn)
 
 # --- ENVÍOS ---
 with tab_envios:
@@ -578,7 +590,17 @@ with tab_envios:
                     st.error("Por favor completa los campos de cliente, destino y productos.")
                     
     st.subheader("Historial de Envíos")
-    df_envios = pd.read_sql_query("SELECT fecha as Fecha, cliente as Cliente, productos as Productos, destino as Destino, costo_envio as Costo, km_recorrido as Distancia_km FROM envios ORDER BY id DESC", conn)
+    df_envios = pd.read_sql_query("""
+        SELECT
+            fecha AS "Fecha",
+            cliente AS "Cliente",
+            productos AS "Productos",
+            destino AS "Destino",
+            costo_envio AS "Costo",
+            km_recorrido AS "Distancia_km"
+        FROM envios
+        ORDER BY id DESC
+        """, conn)
     if not df_envios.empty:
         df_envios['Costo'] = df_envios['Costo'].apply(lambda x: f"${x:,.2f}")
         st.table(df_envios)
@@ -623,7 +645,19 @@ with tab_cobranza:
     st.markdown("---")
     
     st.subheader("Estado Actual de Cuentas")
-    df_cobranza = pd.read_sql_query("SELECT id, fecha_registro as Fecha, cliente as Cliente, tipo_compra as Tipo, plazos as Plazos, metodo_pago as Metodo, estado_pago as Estado, total_pagar as Total FROM cobranza ORDER BY id DESC", conn)
+    df_cobranza = pd.read_sql_query("""
+        SELECT
+            id,
+            fecha_registro AS "Fecha",
+            cliente AS "Cliente",
+            tipo_compra AS "Tipo",
+            plazos AS "Plazos",
+            metodo_pago AS "Metodo",
+            estado_pago AS "Estado",
+            total_pagar AS "Total"
+        FROM cobranza
+        ORDER BY id DESC
+        """, conn)
     
     if not df_cobranza.empty:
         df_mostrar = df_cobranza.copy()
@@ -657,19 +691,19 @@ with tab_dashboards:
     
     c = conn.cursor()
     c.execute("SELECT SUM(total_compra) FROM compras")
-    inv_mercancia = c.fetchone()[0] or 0.0
+    inv_mercancia = c.fetchone()[0] or Decimal("0.0")
     c.execute("SELECT SUM(monto) FROM gastos")
-    inv_gastos = c.fetchone()[0] or 0.0
+    inv_gastos = c.fetchone()[0] or Decimal("0.0")
     c.execute("SELECT SUM(costo_envio) FROM envios")
-    inv_envios = c.fetchone()[0] or 0.0
+    inv_envios = c.fetchone()[0] or Decimal("0.0")
     
     inversion_total = inv_mercancia + inv_gastos + inv_envios
     
     c.execute("SELECT SUM(total) FROM ventas")
-    ventas_brutas = c.fetchone()[0] or 0.0
+    ventas_brutas = c.fetchone()[0] or Decimal("0.0")
     
     c.execute("SELECT SUM(km_recorrido) FROM envios")
-    km_totales = c.fetchone()[0] or 0.0
+    km_totales = c.fetchone()[0] or Decimal("0.0")
     
     ganancia_neta = ventas_brutas - inversion_total
     
@@ -693,7 +727,13 @@ with tab_dashboards:
     
     with col_graf1:
         st.subheader("Inversión por Tienda")
-        df_tiendas = pd.read_sql_query("SELECT tienda, SUM(total_compra) as Inversion FROM compras GROUP BY tienda", conn)
+        df_tiendas = pd.read_sql_query("""
+            SELECT
+                tienda,
+                SUM(total_compra) AS "Inversion"
+            FROM compras
+            GROUP BY tienda
+        """, conn)
         if not df_tiendas.empty:
             fig_tiendas = px.pie(df_tiendas, values='Inversion', names='tienda', hole=0.4, color_discrete_sequence=colores_rosa)
             fig_tiendas.update_layout(
@@ -707,7 +747,14 @@ with tab_dashboards:
             
     with col_graf2:
         st.subheader("Frecuencia de Clientes")
-        df_freq = pd.read_sql_query("SELECT cliente, COUNT(DISTINCT date(fecha)) as Dias_Comprados FROM ventas GROUP BY cliente ORDER BY Dias_Comprados DESC", conn)
+        df_freq = pd.read_sql_query("""
+            SELECT
+                cliente,
+                COUNT(DISTINCT DATE(fecha)) AS "Dias_Comprados"
+            FROM ventas
+            GROUP BY cliente
+            ORDER BY "Dias_Comprados" DESC
+        """, conn)
         if not df_freq.empty:
             fig_freq = px.bar(df_freq, x='cliente', y='Dias_Comprados', color_discrete_sequence=["#E83E8C"])
             fig_freq.update_layout(
